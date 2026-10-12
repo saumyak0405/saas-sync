@@ -138,10 +138,14 @@ class PostgresDestinationTest {
     void rollsBackRowsSchemaChangesAndStateTogether() throws SQLException {
         destination.write(source, CUSTOMERS, List.of(customer("cus_1", "Asha")), Json.obj().put("cursor", 1));
 
+        // Make the database reject one specific row; any database-side error would do.
+        try (Statement st = check.createStatement()) {
+            st.execute("ALTER TABLE " + source + ".customers ADD CONSTRAINT no_rejects CHECK (name <> 'reject me')");
+        }
+
         ObjectNode good = customerData("cus_2", "Ravi");
         good.put("extra", "new column");
-        // A number too large for Postgres's numeric type: any database-side error would do.
-        ObjectNode bad = Json.parseObject("{\"id\": \"cus_3\", \"name\": \"x\", \"huge\": 1E+200000}");
+        ObjectNode bad = customerData("cus_3", "reject me");
         assertThrows(DestinationException.class, () -> destination.write(source, CUSTOMERS,
                 List.of(Record.upsert(good), Record.upsert(bad)), Json.obj().put("cursor", 2)));
 
